@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LCLStreamer — Live Monitor</title>
+<style>
+  :root{
+    color-scheme:light dark;
+    --page:#eef1f4; --surface:#ffffff; --surface2:#f7f8fb; --inset:#f0f2f6;
+    --ink:#12151b; --ink2:#565b66; --muted:#8a8f99; --hair:#e3e6ec; --grid:#edeff3;
+    --accent:#0e93ab; --good:#0ca30c; --warn:#dd8b12; --serious:#e0672e; --stale:#a3a9b3;
+    --font:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --shadow:0 1px 2px rgba(16,22,30,.05),0 12px 34px -22px rgba(16,22,30,.4);
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --page:#0a0d12; --surface:#141922; --surface2:#0f141c; --inset:#0c1017;
+    --ink:#eef2f7; --ink2:#a9b1bf; --muted:#6f7784; --hair:#232b37; --grid:#1a212b;
+    --accent:#2cc0d6; --good:#2fb350; --warn:#f0a637; --serious:#ef8a5a; --stale:#586170;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 16px 40px -24px rgba(0,0,0,.75);
+  }}
+  :root[data-theme="dark"]{
+    --page:#0a0d12; --surface:#141922; --surface2:#0f141c; --inset:#0c1017;
+    --ink:#eef2f7; --ink2:#a9b1bf; --muted:#6f7784; --hair:#232b37; --grid:#1a212b;
+    --accent:#2cc0d6; --good:#2fb350; --warn:#f0a637; --serious:#ef8a5a; --stale:#586170;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 16px 40px -24px rgba(0,0,0,.75);
+  }
+  :root[data-theme="light"]{
+    --page:#eef1f4; --surface:#ffffff; --surface2:#f7f8fb; --inset:#f0f2f6;
+    --ink:#12151b; --ink2:#565b66; --muted:#8a8f99; --hair:#e3e6ec; --grid:#edeff3;
+    --accent:#0e93ab; --good:#0ca30c; --warn:#dd8b12; --serious:#e0672e; --stale:#a3a9b3;
+    --shadow:0 1px 2px rgba(16,22,30,.05),0 12px 34px -22px rgba(16,22,30,.4);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--page);color:var(--ink);font-family:var(--font);
+    -webkit-font-smoothing:antialiased;line-height:1.4;}
+  .app{max-width:1320px;margin:0 auto;padding:18px 18px 40px;}
+  .mono{font-family:var(--mono)}
+
+  /* ---------- header ---------- */
+  header{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:14px;}
+  .brand{display:flex;flex-direction:column;gap:2px;margin-right:auto;}
+  .brand .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--accent);font-weight:600;}
+  .brand h1{margin:0;font-size:20px;font-weight:750;letter-spacing:-.01em;}
+  .pill{display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:999px;
+    font-family:var(--mono);font-size:12.5px;font-weight:600;border:1px solid var(--hair);
+    background:var(--surface);box-shadow:var(--shadow);white-space:nowrap;}
+  .pill .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);}
+  .pill.live .dot{background:var(--good);box-shadow:0 0 0 3px color-mix(in srgb, var(--good) 25%, transparent);}
+  .pill.demo .dot{background:var(--warn);box-shadow:0 0 0 3px color-mix(in srgb, var(--warn) 25%, transparent);}
+  .pill.off .dot{background:var(--serious);}
+  .run{font-family:var(--mono);font-size:12.5px;color:var(--ink2);}
+  .run b{color:var(--ink);font-weight:600;}
+
+  /* ---------- stat tiles ---------- */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;}
+  .stat{background:var(--surface);border:1px solid var(--hair);border-radius:12px;padding:14px 16px;
+    box-shadow:var(--shadow);}
+  .stat .label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+    font-weight:600;margin-bottom:6px;}
+  .stat .value{font-family:var(--mono);font-size:26px;font-weight:600;color:var(--ink);}
+  .stat .value small{font-size:14px;color:var(--ink2);font-weight:500;margin-left:3px;}
+  .stat .sub{font-size:11.5px;color:var(--muted);margin-top:3px;}
+
+  /* ---------- panel shell ---------- */
+  .panel{background:var(--surface);border:1px solid var(--hair);border-radius:14px;padding:16px 18px;
+    box-shadow:var(--shadow);margin-bottom:14px;}
+  .panel h2{margin:0 0 12px;font-size:13px;letter-spacing:.04em;text-transform:uppercase;
+    color:var(--ink2);font-weight:700;display:flex;align-items:center;gap:8px;}
+  .panel h2 .n{font-family:var(--mono);color:var(--muted);font-weight:500;text-transform:none;
+    letter-spacing:0;font-size:12px;}
+
+  /* ---------- throughput chart ---------- */
+  #chart{width:100%;height:120px;display:block;}
+
+  /* ---------- rank grid ---------- */
+  .rankgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:8px;}
+  .rank{background:var(--inset);border:1px solid var(--hair);border-radius:10px;padding:9px 11px;
+    transition:opacity .3s;}
+  .rank.stale{opacity:.42;}
+  .rank .rk{font-family:var(--mono);font-size:11px;color:var(--muted);display:flex;justify-content:space-between;}
+  .rank .host{font-size:10.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    margin-top:1px;}
+  .rank .evs{font-family:var(--mono);font-size:17px;font-weight:600;color:var(--ink);margin-top:5px;}
+  .rank .evs small{font-size:10.5px;color:var(--ink2);font-weight:500;}
+  .rank svg{width:100%;height:22px;margin-top:5px;display:block;}
+  .rank svg polyline{fill:none;stroke:var(--accent);stroke-width:1.6;}
+  .empty{color:var(--muted);font-size:13px;padding:18px 4px;text-align:center;}
+
+  /* ---------- consumer strip ---------- */
+  .conslist{display:flex;flex-direction:column;gap:8px;}
+  .cons{display:flex;align-items:center;gap:14px;background:var(--inset);border:1px solid var(--hair);
+    border-radius:10px;padding:10px 14px;}
+  .cons.stale{opacity:.42;}
+  .cons .host{font-family:var(--mono);font-size:12.5px;color:var(--ink);min-width:150px;}
+  .cons .m{font-family:var(--mono);font-size:13px;color:var(--ink2);}
+  .cons .m b{color:var(--ink);font-weight:600;}
+  .lagbar{flex:1;height:6px;background:var(--grid);border-radius:3px;overflow:hidden;min-width:60px;}
+  .lagbar i{display:block;height:100%;background:var(--accent);border-radius:3px;}
+
+  .foot{font-size:11.5px;color:var(--muted);line-height:1.55;margin-top:6px;}
+  .foot code{font-family:var(--mono);background:var(--inset);padding:1px 5px;border-radius:4px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <span class="eyebrow">SLAC · LCLS</span>
+      <h1>LCLStreamer Monitor</h1>
+    </div>
+    <span class="run" id="run"></span>
+    <span class="pill off" id="modePill"><span class="dot"></span><span id="modeText">connecting…</span></span>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><div class="label">Producer throughput</div>
+      <div class="value mono"><span id="totEvs">0</span><small>ev/s</small></div>
+      <div class="sub" id="totMb">0.0 MB/s</div></div>
+    <div class="stat"><div class="label">Active ranks</div>
+      <div class="value mono"><span id="rankActive">0</span><small>/ <span id="rankTotal">0</span></small></div>
+      <div class="sub" id="rankHosts">—</div></div>
+    <div class="stat"><div class="label">Events processed</div>
+      <div class="value mono" id="totCount">0</div>
+      <div class="sub" id="uptime">uptime 0s</div></div>
+    <div class="stat"><div class="label">Consumer backlog</div>
+      <div class="value mono" id="lagVal">—</div>
+      <div class="sub" id="lagSub">no sink reporting</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Aggregate throughput <span class="n" id="chartN"></span></h2>
+    <canvas id="chart"></canvas>
+  </div>
+
+  <div class="panel">
+    <h2>Producer ranks <span class="n" id="rankN"></span></h2>
+    <div class="rankgrid" id="rankGrid"><div class="empty">waiting for the first tick…</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Sink / consumer</h2>
+    <div class="conslist" id="consList"><div class="empty">no consumer has reported yet</div></div>
+  </div>
+
+  <p class="foot">
+    <span id="footNote">Not yet connected.</span>
+    Schema: each producer tick is the cumulative <code>{count, bytes, wait}</code> LCLStreamer's own
+    <code>utils.stream.clock()</code> already computes per MPI rank — this page just receives it over HTTP
+    and turns cumulative counters into rates. See <code>README.md</code> for the one-line integration hook.
+  </p>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  const $=id=>document.getElementById(id);
+  const clamp=(x,a,b)=>x<a?a:x>b?b:x;
+  const fmt=(x,d=0)=>Number(x).toLocaleString(undefined,{maximumFractionDigits:d,minimumFractionDigits:d});
+  const fmtMb=x=>(x>=1024? (x/1024).toFixed(2)+" GB/s" : x.toFixed(1)+" MB/s");
+
+  const START=Date.now();
+  let lastSnap=null;
+  const histTot=[];         // rolling total ev/s, client-maintained, capped at HIST_CAP points
+  const HIST_CAP=120;
+
+  function setMode(mode){
+    const pill=$("modePill"), txt=$("modeText");
+    pill.className="pill "+(mode==="live"?"live":mode==="demo"?"demo":"off");
+    txt.textContent = mode==="live" ? "LIVE" : mode==="demo" ? "DEMO DATA" : "disconnected";
+    $("footNote").textContent = mode==="live"
+      ? "Connected to a live dashboard_server.py --live instance; every number below came from a real POST /ingest tick."
+      : mode==="demo"
+      ? "This is synthetic demo data from dashboard_server.py's built-in generator — no LCLStreamer instance is connected. Run with --live once ticks are wired in (see README)."
+      : "Lost the connection to dashboard_server.py — retrying automatically.";
+  }
+
+  function rankTile(r){
+    const el=document.createElement("div");
+    el.className="rank"+(r.stale?" stale":"");
+    const pts=(r.hist&&r.hist.length? r.hist : [0]);
+    const mx=Math.max(1,...pts);
+    const w=100,h=20;
+    const poly=pts.map((v,i)=>`${(i/(Math.max(pts.length-1,1)))*w},${h-(v/mx)*h}`).join(" ");
+    el.innerHTML = `
+      <div class="rk"><span>rank ${r.rank}</span><span>${r.stale?"stale":"ok"}</span></div>
+      <div class="host">${r.host||"?"}</div>
+      <div class="evs">${fmt(r.ev_s,0)}<small> ev/s</small></div>
+      <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline points="${poly}"/></svg>`;
+    return el;
+  }
+
+  function consRow(c){
+    const el=document.createElement("div");
+    el.className="cons"+(c.stale?" stale":"");
+    const lag = (c.lag_events!=null) ? `${fmt(c.lag_events)} ev behind` : "—";
+    const pct = clamp((c.lag_frac||0)*100,0,100);
+    el.innerHTML = `
+      <span class="host">${c.host||"?"}</span>
+      <span class="m"><b>${fmt(c.ev_s,0)}</b> ev/s</span>
+      <span class="m"><b>${fmtMb(c.mb_s||0)}</b></span>
+      <div class="lagbar"><i style="width:${pct}%"></i></div>
+      <span class="m">${lag}</span>`;
+    return el;
+  }
+
+  function render(snap){
+    lastSnap=snap;
+    setMode(snap.mode);
+    $("run").textContent = snap.run ? "run " : "";
+    if(snap.run){ const b=document.createElement("b"); } // no-op guard
+    $("run").innerHTML = snap.run ? `run <b>${snap.run}</b>` : "";
+
+    const producers = snap.producers||[];
+    const active = producers.filter(p=>!p.stale);
+    const totEvs = active.reduce((a,p)=>a+(p.ev_s||0),0);
+    const totMb  = active.reduce((a,p)=>a+(p.mb_s||0),0);
+    const totCount = producers.reduce((a,p)=>a+(p.count||0),0);
+
+    $("totEvs").textContent = fmt(totEvs,0);
+    $("totMb").textContent  = fmtMb(totMb);
+    $("rankActive").textContent = active.length;
+    $("rankTotal").textContent  = producers.length;
+    $("rankHosts").textContent  = producers.length
+      ? [...new Set(producers.map(p=>p.host))].length + " host(s)" : "—";
+    $("totCount").textContent = fmt(totCount,0);
+    $("uptime").textContent = "uptime " + Math.round((Date.now()-START)/1000) + "s";
+    $("rankN").textContent = producers.length ? `${producers.length} rank(s)` : "";
+
+    const grid=$("rankGrid"); grid.innerHTML="";
+    if(!producers.length){ grid.innerHTML='<div class="empty">waiting for the first tick…</div>'; }
+    else { producers.sort((a,b)=>a.rank-b.rank).forEach(r=>grid.appendChild(rankTile(r))); }
+
+    const cons = snap.consumers||[];
+    const cl=$("consList"); cl.innerHTML="";
+    if(!cons.length){ cl.innerHTML='<div class="empty">no consumer has reported yet</div>'; }
+    else {
+      let anyLag=false;
+      cons.forEach(c=>{ if(c.lag_events!=null) anyLag=true; cl.appendChild(consRow(c)); });
+      const first=cons[0];
+      $("lagVal").textContent = first && first.lag_events!=null ? fmt(first.lag_events,0) : "—";
+      $("lagSub").textContent = anyLag ? "events behind producer total" : "sink reporting, no lag computed";
+    }
+
+    histTot.push(totEvs);
+    if(histTot.length>HIST_CAP) histTot.shift();
+    $("chartN").textContent = histTot.length ? `last ${histTot.length} ticks` : "";
+    drawChart();
+  }
+
+  function drawChart(){
+    const cv=$("chart"), ctx=cv.getContext("2d");
+    const dpr=window.devicePixelRatio||1;
+    const cw=cv.clientWidth||600, ch=cv.clientHeight||120;
+    if(cv.width!==cw*dpr||cv.height!==ch*dpr){ cv.width=cw*dpr; cv.height=ch*dpr; }
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,cw,ch);
+    const grid=getComputedStyle(document.documentElement).getPropertyValue("--grid").trim();
+    const accent=getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+    ctx.strokeStyle=grid; ctx.lineWidth=1;
+    for(let i=1;i<4;i++){ const y=ch*i/4; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cw,y); ctx.stroke(); }
+    if(histTot.length<2) return;
+    const mx=Math.max(1,...histTot);
+    ctx.beginPath();
+    histTot.forEach((v,i)=>{
+      const x=(i/(HIST_CAP-1))*cw, y=ch-(v/mx)*ch*0.92-2;
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.strokeStyle=accent; ctx.lineWidth=2; ctx.lineJoin="round"; ctx.stroke();
+    ctx.lineTo(cw,ch); ctx.lineTo((0/(HIST_CAP-1))*cw,ch); ctx.closePath();
+    ctx.fillStyle=accent.replace(")", ", 0.12)").replace("rgb","rgba");
+    try{ ctx.fill(); }catch(e){}
+  }
+
+  function connect(){
+    setMode("off");
+    const es=new EventSource("/events");
+    es.onmessage=(ev)=>{ try{ render(JSON.parse(ev.data)); }catch(e){ console.error(e); } };
+    es.onerror=()=>{ setMode("off"); };
+  }
+  window.addEventListener("resize", drawChart);
+  connect();
+})();
+</script>
+</body>
+</html>
